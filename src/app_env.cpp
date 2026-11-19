@@ -79,7 +79,7 @@ static const uint8_t BSEC_CFG[] = {
 #include "config/bme688/bme688_sel_33v_3s_4d/bsec_selectivity.txt"
 };
 
-static void bsecCallback(const bme68xData data, const bsecOutputs outputs, const Bsec2 bsec) {
+static void onBsecData(const bme68xData data, const bsecOutputs outputs, const Bsec2 bsec) {
   (void)data; (void)bsec;
   if (!outputs.nOutputs) return;
   float off = cfg.tempOffsetC10 / 10.0f;
@@ -136,7 +136,7 @@ static bool sensorBegin() {
     s_err = "BSEC subscribe failed: " + String((int)s_bsec.status);
     return false;
   }
-  s_bsec.attachCallback(bsecCallback);
+  s_bsec.attachCallback(onBsecData);
   s_stateSavedAt = millis();
   return true;
 }
