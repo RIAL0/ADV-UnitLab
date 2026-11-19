@@ -39,7 +39,7 @@ Coming next (see [docs/ROADMAP.md](docs/ROADMAP.md)): RFID2 U031-B, NFC U216 and
 - **One Grove port.** One unit at a time. ENV-Pro, NFC and RFID2 can share a Grove hub (addresses 0x77, 0x50, 0x28). GPS and Gateway H2 need the port to themselves.
 - The firmware finds the UART wire order and baud rate itself, so GPS works whichever way the cable maps RX/TX.
 - **IR**: the unit's receiver is found by its idle-high output. Sending can use the Cardputer's own LED (G44) or the unit's LED.
-- **ENV-Pro temperature** reads slightly high from self-heating. Set a correction in Settings → ENV temp offset (it also corrects relative humidity). Set your local sea-level pressure there for an accurate altitude.
+- **ENV-Pro temperature** reads slightly high from self-heating. Set a correction in Settings → ENV temp correct (it also corrects relative humidity). Set Altitude ref QNH (your local sea-level pressure, from the nearest BoM station) there for an accurate altitude.
 
 ## Building
 

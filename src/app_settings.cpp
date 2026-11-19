@@ -106,8 +106,8 @@ void appSettings() {
     snprintf(v[4], 28, "%+.1f C", cfg.tempOffsetC10 / 10.0f);
     snprintf(v[5], 28, "%.1f hPa", cfg.seaLevelHpa10 / 10.0f);
     snprintf(v[6], 28, "ENTER");
-    static const char* const L[] = {"Brightness", "Dim after", "Screen off", "Volume", "ENV temp offset",
-                                    "Sea-level press.", "About"};
+    static const char* const L[] = {"Brightness", "Dim after", "Screen off", "Volume", "ENV temp correct",
+                                    "Altitude ref QNH", "About"};
     for (int i = 0; i < N; i++) {
       int y = TOP + 2 + i * 14;
       bool on = i == sel;
