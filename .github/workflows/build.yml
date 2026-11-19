@@ -48,17 +48,11 @@ jobs:
           set -o pipefail
           pio run -e cardputer-adv-bsec 2>&1 | tee build-bsec.log
 
-      - name: Compile-check NFC probe (Phase 2)
-        if: success() || failure()
-        run: |
-          set -o pipefail
-          pio run -e nfc-probe 2>&1 | tee build-nfc.log
-
       # Turns compiler errors and warnings from our own sources into annotations on the run page.
       - name: Annotate compiler messages
         if: always()
         run: |
-          for f in build-public.log build-bsec.log build-nfc.log; do
+          for f in build-public.log build-bsec.log; do
             [ -f "$f" ] || continue
             grep -E '^(src|include|probe)/[^:]+:[0-9]+:[0-9]+: (error|warning):' "$f" | sort -u | head -40 | \
             while IFS= read -r line; do

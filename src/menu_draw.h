@@ -11,6 +11,7 @@ static const MenuItem MENU_ITEMS[] = {
   {"ENV-Pro", "U169 climate, IAQ, alarms", 0x07E0, 20},
   {"GPS", "U032 position, speed, sky, GPX", 0xFD20, 21},
   {"Infrared", "U002 capture, save, replay .ir", 0xF800, 11},
+  {"NFC / RFID", "U216 / Cap / RFID2 read, emulate", 0x5D1F, 22},
   {"Detect", "What is on the Grove port", 0x07FF, 8},
   {"Settings", "Screen, volume, ENV offsets", 0xBDF7, 16},
 };
@@ -158,6 +159,13 @@ void drawMenuIcon(G& g, int id, int x, int y, uint16_t c, uint16_t bg) {
       g.fillTriangle(x + 7, y + 13, x + 21, y + 13, x + 14, y + 25, c);
       g.fillCircle(x + 14, y + 9, 3, bg);
       g.drawEllipse(x + 14, y + 25, 12, 3, c);
+      break;
+    case 22:  // contactless card with radio waves
+      g.fillRoundRect(x + 1, y + 7, 15, 18, 2, c);
+      g.fillRoundRect(x + 3, y + 9, 11, 6, 1, bg);
+      g.fillArc(x + 20, y + 16, 4, 6, 300, 420, c);
+      g.fillArc(x + 20, y + 16, 9, 11, 300, 420, c);
+      g.fillArc(x + 20, y + 16, 14, 16, 300, 420, c);
       break;
     default:  // display
       g.fillRoundRect(x + 1, y + 3, 26, 18, 2, c);

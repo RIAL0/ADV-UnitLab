@@ -8,7 +8,7 @@
 #include "menu_draw.h"
 
 // Same order as MENU_ITEMS in menu_draw.h
-static void (*const RUN[])() = {appEnv, appGps, appIr, appDetect, appSettings};
+static void (*const RUN[])() = {appEnv, appGps, appIr, appNfc, appDetect, appSettings};
 static const int NITEMS = MENU_COUNT;
 static_assert(sizeof(RUN) / sizeof(RUN[0]) == MENU_COUNT, "RUN[] and MENU_ITEMS[] must match");
 
