@@ -60,9 +60,12 @@ jobs:
               kind=$(echo "$line" | cut -d: -f4 | tr -d ' '); msg=$(echo "$line" | cut -d: -f5- | cut -c1-300)
               echo "::${kind} file=${file},line=${ln},title=${f%.log}::${msg}"
             done
-            # Linker and library errors have no source location
-            grep -E '(undefined reference|cannot find|Error:|fatal error:|Library Manager|UnknownPackageError)' "$f" | sort -u | head -15 | \
-            while IFS= read -r line; do echo "::error title=${f%.log}::$(echo "$line" | cut -c1-300)"; done
+            # Errors inside libraries, linker errors and tool failures: no location in our sources
+            grep -E '(error:|undefined reference|cannot find|\*\*\* \[|UnknownPackageError|Error [0-9])' "$f" | grep -vE '^(src|include)/' | sort -u | head -20 | \
+            while IFS= read -r line; do echo "::error title=${f%.log}::$(echo "$line" | cut -c1-400)"; done
+            if ! grep -q '\[SUCCESS\]' "$f"; then
+              tail -n 12 "$f" | while IFS= read -r line; do [ -n "$line" ] && echo "::warning title=${f%.log} tail::$(echo "$line" | cut -c1-400)"; done
+            fi
             grep -E '^(RAM|Flash):' "$f" | while IFS= read -r line; do echo "::notice title=${f%.log} size::${line}"; done
           done
 
