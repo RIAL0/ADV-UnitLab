@@ -113,31 +113,93 @@ int irRxPin() {
   return -1;
 }
 
-Found scan(bool includeUart) {
-  Found f;
-  if (i2cBegin(100000)) {
-    for (uint8_t a = 8; a < 120; a++) {
-      if (!i2cPresent(a)) continue;
-      if (f.i2cCount < 16) f.i2cAddrs[f.i2cCount] = a;
-      f.i2cCount++;
-      bool ok = false;
-      if (a == 0x77 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.envPro = true;
-      if (a == 0x76 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.bme680 = true;
-      if (a == 0x28) f.rfid2 = true;
-      if (a == 0x50) f.nfc = true;
-      if (a == 0x5F) f.cardkb = true;
-    }
+bool linesIdleHigh() {
+  release();
+  pinMode(GROVE_YEL, INPUT_PULLUP);
+  pinMode(GROVE_WHT, INPUT_PULLUP);
+  delay(3);
+  int hi = 0;
+  for (int i = 0; i < 10; i++) { hi += digitalRead(GROVE_YEL) && digitalRead(GROVE_WHT); delayMicroseconds(200); }
+  release();
+  return hi >= 9;
+}
+
+// Counts level changes on both wires while listening passively (pull-ups on, nothing driven).
+// A UART unit sending data toggles a line hundreds of times a second; I2C units and an idle
+// IR receiver never do.
+static int lineActivity(uint32_t ms) {
+  pinMode(GROVE_YEL, INPUT_PULLUP);
+  pinMode(GROVE_WHT, INPUT_PULLUP);
+  delay(2);
+  int a = digitalRead(GROVE_YEL), b = digitalRead(GROVE_WHT), edges = 0;
+  uint32_t until = millis() + ms;
+  while (millis() < until) {
+    int na = digitalRead(GROVE_YEL), nb = digitalRead(GROVE_WHT);
+    edges += (na != a) + (nb != b);
+    a = na; b = nb;
   }
   release();
+  return edges;
+}
+
+bool i2cSafe() { return lineActivity(400) <= 20 && linesIdleHigh(); }
+
+Found scan(bool includeUart, const std::function<bool(const char*)>& step) {
+  Found f;
+  auto go = [&](const char* t) { if (!step(t)) { f.aborted = true; release(); return false; } return true; };
+  if (!go("Listening for UART traffic")) return f;
+  bool busy = lineActivity(600) > 20;
+  if (!busy && !go("Listening for UART traffic")) return f;
+  if (!busy) busy = lineActivity(600) > 20;
+  if (!go("Checking line levels")) return f;
+  // Never run I2C on a line something else is driving: that is where the old scan hung
+  if (!busy && linesIdleHigh()) {
+    if (!go("I2C scan 0x08-0x77")) return f;
+    if (i2cBegin(100000)) {
+      Wire.setTimeOut(10);
+      for (uint8_t a = 8; a < 120; a++) {
+        if ((a & 15) == 0 && !go("I2C scan 0x08-0x77")) return f;
+        if (!i2cPresent(a)) continue;
+        if (f.i2cCount < 16) f.i2cAddrs[f.i2cCount] = a;
+        f.i2cCount++;
+        bool ok = false;
+        if (a == 0x77 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.envPro = true;
+        if (a == 0x76 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.bme680 = true;
+        if (a == 0x28) f.rfid2 = true;
+        if (a == 0x50) f.nfc = true;
+        if (a == 0x5F) f.cardkb = true;
+      }
+    }
+    release();
+    // 20+ answers means the "bus" is really a UART or IR line being misread: discard
+    if (f.i2cCount > 20) f.i2cCount = 0;
+  } else {
+    f.i2cSkipped = !busy;
+  }
   if (f.i2cCount == 0) {
     // Nothing on I2C: the port may hold a UART or IR unit instead. A UART transmit line also
     // idles high, so look for NMEA first and only then for the IR receiver's idle-high output.
     if (includeUart) {
-      f.gps = nmeaProbe(f.gpsRx, f.gpsTx, f.gpsBaud, 1200);
+      static const uint32_t BAUDS[] = {115200, 9600, 38400};
+      static const int ORDER[][2] = {{GROVE_YEL, GROVE_WHT}, {GROVE_WHT, GROVE_YEL}};
+      char msg[40];
+      for (uint32_t b : BAUDS) {
+        for (auto& o : ORDER) {
+          snprintf(msg, sizeof(msg), "NMEA %lu baud, RX G%d", (unsigned long)b, o[0]);
+          if (!go(msg)) return f;
+          uartBegin(b, o[0], o[1]);
+          if (listenNmea(1000) >= 2) { f.gps = true; f.gpsRx = o[0]; f.gpsTx = o[1]; f.gpsBaud = b; break; }
+        }
+        if (f.gps) break;
+      }
       release();
     }
-    if (!f.gps) f.irRx = irRxPin();
+    if (!f.gps) {
+      if (!go("IR receiver")) return f;
+      f.irRx = irRxPin();
+    }
   }
+  release();
   return f;
 }
 

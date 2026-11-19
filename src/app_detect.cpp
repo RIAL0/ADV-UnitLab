@@ -15,15 +15,22 @@ static const char* nameFor(uint8_t a) {
 }
 
 void appDetect() {
-  ui::clear();
-  ui::header("Detect");
-  cv.setTextColor(C_FG, C_BG);
-  cv.setCursor(6, TOP + 30); cv.print("Scanning the Grove port...");
-  cv.setTextColor(C_DIM, C_BG);
-  cv.setCursor(6, TOP + 44); cv.print("I2C, then NMEA at 115200/9600/38400,");
-  cv.setCursor(6, TOP + 54); cv.print("then the IR receiver. Up to 8 s.");
-  ui::push();
-  grove::Found f = grove::scan(true);
+  uint32_t t0 = millis();
+  grove::Found f = grove::scan(true, [&](const char* stage) {
+    ui::clear();
+    ui::header("Detect");
+    cv.setTextColor(C_FG, C_BG);
+    cv.setCursor(6, TOP + 24); cv.print("Scanning the Grove port...");
+    cv.setTextColor(C_YEL, C_BG);
+    cv.setCursor(6, TOP + 40); cv.print(stage);
+    cv.setTextColor(C_DIM, C_BG);
+    cv.setCursor(6, TOP + 56); cv.printf("%lu s", (unsigned long)((millis() - t0) / 1000));
+    ui::footer("` or G0 abort");
+    ui::push();
+    ui::Key k = ui::poll();
+    return !k.back;
+  });
+  if (f.aborted) { ui::toast("Scan aborted", C_WARN); return; }
   ui::pager("Detect", [&](std::vector<String>& l) {
     char b[64];
     l.push_back("#Grove port  G2 yellow / G1 white");
@@ -42,13 +49,17 @@ void appDetect() {
       l.push_back("GPS / NMEA\tfound");
       l.push_back(String("UART\t") + b);
       l.push_back("Open\tGPS section");
-    } else if (f.irRx >= 0) {
+    } else if (f.irRx >= 0 || f.i2cSkipped) {
+      if (f.irRx < 0) { l.push_back("Line held low\tI2C skipped (IR unit LED input?)"); }
+      else {
       snprintf(b, sizeof(b), "receiver on G%d, LED on G%d", f.irRx, f.irRx == GROVE_YEL ? GROVE_WHT : GROVE_YEL);
       l.push_back("IR unit?\tidle-high line found");
       l.push_back(String("Wiring\t") + b);
       l.push_back("Note\ta silent UART unit (Gateway H2) looks the same");
+      }
     } else {
       l.push_back("Nothing\tanswered on I2C, UART or IR");
+      if (f.i2cSkipped) l.push_back("Lines\ta wire is held low: I2C skipped");
       l.push_back("Check\tcable fully seated in both ends");
     }
     l.push_back("#Tips");

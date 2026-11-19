@@ -21,7 +21,7 @@ Coming next (see [docs/ROADMAP.md](docs/ROADMAP.md)): RFID2 U031-B, NFC U216 and
 
 | Section | Extra keys |
 |---|---|
-| ENV-Pro | `L` start/stop CSV log · `M` mute alarm · Graph: `;`/`.` channel, `,`/`/` time span · Data: `S` save · Alarms: `,`/`/` value, `ENTER` on/off |
+| ENV-Pro | `L` start/stop CSV log · `H` gas heater 3 s / 30 s / off · `M` mute alarm · Graph: `;`/`.` channel, `,`/`/` time span · Data: `S` save · Alarms: `,`/`/` value, `ENTER` on/off |
 | GPS | `L` start/stop GPX log · `R` update rate · `C` cold start · `Z` reset trip · Data: `S` save |
 | IR capture | `ENTER` replay · `S` save to .ir · `R` raw timings · `P` force raw · `N` new file · `;`/`.` history |
 

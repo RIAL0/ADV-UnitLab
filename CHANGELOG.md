@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+Fixes from the first hardware test.
+
+- **Detect no longer hangs** with the GPS (or any UART unit) plugged in. It listens passively first and never runs I2C on a line another device is driving. Every stage is shown on screen and `` ` `` / G0 aborts. ENV-Pro uses the same guard.
+- **IR**: Samsung remotes now save as Flipper `Samsung32` (parsed) instead of raw.
+- **GPS**: antenna status from the receiver's `$GPTXT` shown on Dash and Data; unknown elevation/azimuth shown as `-`, and the sky plot says when no positions are known yet; text no longer runs off the Sky and Trip screens.
+- **ENV-Pro**: `H` sets how often the gas heater runs (3 s / 30 s / off). Less heating gives truer temperature and humidity. Alarm lines no longer squash the graph scale. Fixed overlapping text in the Data list.
+
 ## 0.1
 
 Phase 1: core, ENV-Pro, GPS, Infrared.

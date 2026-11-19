@@ -4,6 +4,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
+#include <functional>
 
 static const int GROVE_YEL = 2;   // yellow wire, I2C SDA
 static const int GROVE_WHT = 1;   // white wire, I2C SCL
@@ -34,10 +35,21 @@ struct Found {
   int gpsRx = -1, gpsTx = -1;
   uint32_t gpsBaud = 0;
   int irRx = -1;
+  bool i2cSkipped = false;  // a line was held low, so I2C was not attempted
+  bool aborted = false;
   int i2cCount = 0;
   uint8_t i2cAddrs[16];
 };
-Found scan(bool includeUart = true);
+// step(text) is called before every stage and during long ones: it should redraw the progress
+// text and return false to abort (the user pressed back). Nothing in scan() blocks for more than
+// about 1.5 s between two step() calls.
+Found scan(bool includeUart, const std::function<bool(const char*)>& step);
+
+// Both lines read high with the internal pull-ups on: required before talking I2C. A UART or IR
+// unit, or a shorted cable, can hold a line low, and I2C on a stuck bus is where scans hang.
+bool linesIdleHigh();
+// No UART traffic and both lines idle high: safe to start I2C (takes about 0.4 s).
+bool i2cSafe();
 
 bool nmeaChecksumOk(const char* line);  // "$GPGGA,...*hh" without CR/LF
 String nmeaWithChecksum(const char* body);  // "PCAS02,1000" -> "$PCAS02,1000*2E\r\n"

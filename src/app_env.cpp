@@ -152,12 +152,21 @@ static void sensorEnd() {
   s_bsecPrefs.end();
 }
 static const char* backendName() { return "BSEC2"; }
+static void gasCycle() {}                          // BSEC2 runs its own heater schedule
+static const char* gasText() { return "BSEC2 managed"; }
 
 #else  // ------------------------------------------------ public build: raw BME68x driver
 static Bme68x s_bme;
 static uint32_t s_trigAt = 0, s_nextAt = 0;
-static bool s_waiting = false;
+static bool s_waiting = false, s_gasThis = false;
 static String s_err;
+// The gas measurement heats the hot plate to 320 C, which also warms the temperature sensor.
+// Measuring gas less often (or never) gives truer temperature and humidity.
+static int s_gasEvery = 0;                         // index into GAS_EVERY
+static const uint8_t GAS_EVERY[] = {1, 10, 0};     // every sample (3 s), every 30 s, off
+static const char* const GAS_TXT[] = {"3 s", "30 s", "off"};
+static uint32_t s_sampleN = 0;
+static float s_lastGas = NAN;
 
 static bool sensorBegin() {
   s_bme.begin(ENV_ADDR, Wire);
@@ -172,6 +181,12 @@ static bool sensorBegin() {
 static void sensorRun() {
   uint32_t now = millis();
   if (!s_waiting && (int32_t)(now - s_nextAt) >= 0) {
+    uint8_t every = GAS_EVERY[s_gasEvery];
+    s_gasThis = every && (s_sampleN % every == 0);
+    s_sampleN++;
+    // A 1 ms heater pulse is the library's nearest thing to "heater off"; its gas result is
+    // flagged unstable and ignored.
+    if (s_gasThis) s_bme.setHeaterProf(320, 150); else s_bme.setHeaterProf(150, 1);
     s_bme.setOpMode(BME68X_FORCED_MODE);
     s_trigAt = now;
     s_nextAt += SAMPLE_MS;
@@ -192,7 +207,9 @@ static void sensorRun() {
     R.rh = constrain(rh, 0.0f, 100.0f);
     R.p = d.pressure / 100.0f;
     bool gasOk = (d.status & BME68X_GASM_VALID_MSK) && (d.status & BME68X_HEAT_STAB_MSK);
-    R.gasK = gasOk ? d.gas_resistance / 1000.0f : NAN;
+    if (s_gasThis && gasOk) s_lastGas = d.gas_resistance / 1000.0f;
+    if (!GAS_EVERY[s_gasEvery]) s_lastGas = NAN;
+    R.gasK = s_lastGas;
     R.valid = true;
     R.n++;
     s_new = true;
@@ -200,6 +217,8 @@ static void sensorRun() {
 }
 static void sensorEnd() { s_bme.setOpMode(BME68X_SLEEP_MODE); }
 static const char* backendName() { return "BME68x raw"; }
+static void gasCycle() { s_gasEvery = (s_gasEvery + 1) % 3; s_sampleN = 0; s_lastGas = NAN; }
+static const char* gasText() { return GAS_TXT[s_gasEvery]; }
 #endif
 
 // ------------------------------------------------------------------ history (graph data)
@@ -402,7 +421,7 @@ static void viewLive() {
   cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y); cv.print("Alt");
   cv.setTextColor(C_FG, C_BG); cv.printf(" %.0f m", altitudeM(R.p));
   cv.setTextColor(C_DIM, C_BG); cv.print("  Gas");
-  if (isnan(R.gasK)) { cv.setTextColor(C_DIM, C_BG); cv.print(" heating"); }
+  if (isnan(R.gasK)) { cv.setTextColor(C_DIM, C_BG); cv.print(strcmp(gasText(), "off") ? " heating" : " off"); }
   else { cv.setTextColor(C_FG, C_BG); cv.printf(" %.1f kOhm", R.gasK); }
   y += 13;
   // air quality bar
@@ -461,18 +480,27 @@ static void viewGraph() {
   }
   float dataMn = mn, dataMx = mx;
   bool hHi, hLo; float lo; float hiThr = alarmLineFor(s_graphCh, hHi, lo, hLo);
-  if (hHi) { mn = min(mn, hiThr); mx = max(mx, hiThr); }
-  if (hLo) { mn = min(mn, lo); mx = max(mx, lo); }
   float span = mx - mn;
   if (span < 0.2f) { mn -= 0.1f; mx += 0.1f; span = mx - mn; }
+  // Pull an alarm line into view only when it sits close to the data; otherwise mark it
+  if (hHi && hiThr > mx && hiThr - mx < span * 0.5f) mx = hiThr;
+  if (hLo && lo < mn && mn - lo < span * 0.5f) mn = lo;
+  span = mx - mn;
   mn -= span * 0.08f; mx += span * 0.08f; span = mx - mn;
   auto Y = [&](float v) { return gy + gh - 1 - (int)((v - mn) / span * (gh - 1)); };
   cv.setTextColor(C_DIM, C_BG);
-  cv.setCursor(0, gy); cv.printf("%5.*f", span < 10 ? 1 : 0, mx);
-  cv.setCursor(0, gy + gh - 8); cv.printf("%5.*f", span < 10 ? 1 : 0, mn);
+  int dec = span < 2 ? 2 : span < 20 ? 1 : 0;
+  cv.setCursor(0, gy); cv.printf("%5.*f", dec, mx);
+  cv.setCursor(0, gy + gh - 8); cv.printf("%5.*f", dec, mn);
   for (int i = 1; i < 4; i++) cv.drawFastHLine(gx, gy + gh * i / 4, gw, 0x10A2);
-  if (hHi) cv.drawFastHLine(gx, Y(hiThr), gw, C_BAD);
-  if (hLo) cv.drawFastHLine(gx, Y(lo), gw, C_ACC);
+  if (hHi) {
+    if (hiThr <= mx) cv.drawFastHLine(gx, Y(hiThr), gw, C_BAD);
+    else { cv.setTextColor(C_BAD, C_BG); cv.setCursor(gx + gw - 54, gy + 2); cv.printf("^ %.1f", hiThr); }
+  }
+  if (hLo) {
+    if (lo >= mn) cv.drawFastHLine(gx, Y(lo), gw, C_ACC);
+    else { cv.setTextColor(C_ACC, C_BG); cv.setCursor(gx + gw - 54, gy + gh - 10); cv.printf("v %.1f", lo); }
+  }
   int px = -1, py = 0;
   int x0 = gx + gw - T.count;
   for (int i = 0; i < T.count; i++) {
@@ -507,6 +535,7 @@ static void buildData(std::vector<String>& L) {
   add("Sea-level ref", "%.1f hPa", cfg.seaLevelHpa10 / 10.0f);
   L.push_back(String("3 h trend\t") + pressureTrend());
   L.push_back("#Gas sensor");
+  L.push_back(String("Measure every\t") + gasText() + " (H)");
   add("Resistance", "%.2f kOhm", R.gasK);
   add("Clean-air base", "%.2f kOhm", s_gasBase);
   add("Drop vs base", "%.1f %%", gasDropPct());
@@ -522,7 +551,8 @@ static void buildData(std::vector<String>& L) {
     L.push_back(String("Stabilised\t") + (R.stab >= 1 ? "yes" : "no"));
     L.push_back(String("Run-in done\t") + (R.runIn >= 1 ? "yes" : "no"));
   } else {
-    L.push_back("Not in this build\tuse env cardputer-adv-bsec");
+    L.push_back("Build\tBME68x raw (no IAQ)");
+    L.push_back("For IAQ\tbuild env cardputer-adv-bsec");
   }
   L.push_back("#Session");
   snprintf(b, sizeof(b), "Samples\t%lu (every 3 s)", (unsigned long)R.n); L.push_back(b);
@@ -597,6 +627,10 @@ static void alarmsKey(const ui::Key& k) {
 
 // ------------------------------------------------------------------ section
 void appEnv() {
+  if (!grove::i2cSafe()) {
+    ui::toast("Grove holds a UART/IR unit, not I2C", C_BAD, 1800);
+    return;
+  }
   if (!grove::i2cBegin(400000) || !grove::i2cPresent(ENV_ADDR)) {
     grove::release();
     ui::toast("No ENV-Pro at 0x77 on Grove", C_BAD, 1800);
@@ -646,6 +680,9 @@ void appEnv() {
     if (k.ch >= '1' && k.ch <= '4') view = k.ch - '1';
     if (k.lc == 'l') logToggle();
     if (k.lc == 'm' && !s_alarmText.isEmpty()) s_muted = true;
+#ifndef UL_BSEC2
+    if (k.lc == 'h') { gasCycle(); s_gasBase = NAN; ui::toast(String("Gas every ") + gasText(), C_OK, 700); }
+#endif
     if (view == 1) {
       if (k.up) s_graphCh = (s_graphCh + CH_N - 1) % CH_N;
       if (k.down) s_graphCh = (s_graphCh + 1) % CH_N;
@@ -670,7 +707,7 @@ void appEnv() {
     snprintf(hdr, sizeof(hdr), "ENV-Pro: %s", VIEWS[view]);
     ui::header(hdr);
     switch (view) {
-      case 0: viewLive(); ui::footer("TAB view  L log  M mute  ` back"); break;
+      case 0: viewLive(); ui::footer("TAB view L log H gas M mute"); break;
       case 1: viewGraph(); ui::footer(";/. channel  ,// span  TAB view"); break;
       case 2: viewData(); ui::footer(";/. scroll  S save  L log  TAB view"); break;
       case 3: viewAlarms(); ui::footer(";/. pick ,// value ENTER on/off"); break;

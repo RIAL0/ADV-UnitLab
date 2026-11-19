@@ -21,6 +21,7 @@ static int s_fixMode = 1;            // GSA: 1 none, 2 = 2D, 3 = 3D
 static float s_pdop = NAN, s_hdop = NAN, s_vdop = NAN;
 static uint32_t s_gsvCount = 0, s_gsaCount = 0, s_badLines = 0;
 static String s_lastSentence;
+static String s_antenna = "?";       // from $GPTXT ANTENNA OK / OPEN / SHORT
 
 // NMEA talker -> constellation letter (RINEX style)
 static char sysFromTalker(const char* t) {
@@ -120,6 +121,10 @@ static void nmeaChar(char c) {
     int n = splitFields(s_line + 1, f, 24);
     if (strlen(f[0]) < 5) return;
     char sys = sysFromTalker(f[0]);
+    if (!strcmp(f[0] + 2, "TXT") && n >= 5) {
+      if (!strncmp(f[4], "ANTENNA ", 8)) s_antenna = f[4] + 8;
+      return;
+    }
     if (!strcmp(f[0] + 2, "GSV")) parseGsv(sys, f, n);
     else if (!strcmp(f[0] + 2, "GSA")) parseGsa(f[0][1] == 'N' ? '?' : sys, f, n);
     return;
@@ -251,7 +256,8 @@ static void viewDash() {
   cv.print(t.length() ? t : String("-"));
   y += 12;
   cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y);
-  cv.printf("%s  %s", RATE_TXT[s_rateIdx], s_gpx ? "" : "L = start GPX log");
+  cv.printf("%s  ant %s  ", RATE_TXT[s_rateIdx], s_antenna.c_str());
+  if (!s_gpx) cv.print("L = GPX log");
   if (s_gpx) { cv.setTextColor(C_BAD, C_BG); cv.printf("REC %s %lu pts", s_gpxName.c_str(), (unsigned long)s_gpxPts); }
 }
 
@@ -285,11 +291,18 @@ static void viewSky() {
     y += 10;
   }
   y += 4;
-  cv.setTextColor(C_DIM, C_BG); cv.setCursor(126, y); cv.print("filled = used in fix");
+  int placed = 0;
+  for (int i = 0; i < s_nSats; i++) if (s_sats[i].elev >= 0 && s_sats[i].az >= 0) placed++;
+  cv.setTextColor(C_DIM, C_BG); cv.setCursor(126, y); cv.print("filled = in fix");
   y += 10;
-  cv.setCursor(126, y); cv.print("rings 0/30/60 deg elev");
+  cv.setCursor(126, y); cv.print("rings: 0/30/60 deg");
   y += 12;
   cv.setTextColor(C_FG, C_BG); cv.setCursor(126, y); cv.print(fixText());
+  if (s_nSats && !placed) {
+    // Elevation/azimuth come from the orbit data the receiver decodes, not from the signal itself
+    cv.setTextColor(C_WARN, C_BG);
+    cv.setCursor(20, cy - 4); cv.print("no positions yet");
+  }
 }
 
 static void viewSignal() {
@@ -337,7 +350,7 @@ static void viewTrip() {
   snprintf(b, sizeof(b), "%lu:%02lu:%02lu", (unsigned long)(el / 3600), (unsigned long)(el / 60 % 60), (unsigned long)(el % 60));
   row("Elapsed", b);
   row("GPX log", s_gpx ? s_gpxName + " " + String(s_gpxPts) + " pts" : String("off"));
-  cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y + 2); cv.print("Z = reset trip (counts only when moving)");
+  cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y + 2); cv.print("Z reset. Counts only above 2 km/h");
 }
 
 static int s_dataTop = 0;
@@ -358,6 +371,7 @@ static void buildData(std::vector<String>& L) {
   }
   if (gps.altitude.isValid()) { snprintf(b, sizeof(b), "%.1f m", gps.altitude.meters()); kv("Altitude MSL", b); }
   L.push_back("#Motion");
+  if (!gps.speed.isValid() && !gps.course.isValid()) kv("Speed", "- (needs a fix)");
   if (gps.speed.isValid()) {
     snprintf(b, sizeof(b), "%.2f km/h", gps.speed.kmph()); kv("Speed", b);
     snprintf(b, sizeof(b), "%.2f kn  %.2f m/s", gps.speed.knots(), gps.speed.mps()); kv(" ", b);
@@ -367,13 +381,18 @@ static void buildData(std::vector<String>& L) {
   auto f2 = [](float v) { return isnan(v) ? String("-") : String(v, 2); };
   kv("PDOP", f2(s_pdop)); kv("HDOP", f2(s_hdop)); kv("VDOP", f2(s_vdop));
   snprintf(b, sizeof(b), "%d used / %d in view", usedCount(), s_nSats); kv("Satellites", b);
+  kv("Antenna", s_antenna);
   L.push_back("#Time (UTC)");
   String t = isoTime();
   kv("Date/time", t.length() ? t : String("-"));
-  L.push_back("#Satellites  sys prn elev az snr");
+  L.push_back("#Satellites  * = used   elev  az  C/N0");
   for (int i = 0; i < s_nSats; i++) {
     const Sat& s = s_sats[i];
-    snprintf(b, sizeof(b), "%c%-3u %s\t%2d  %3d  %2d dB", s.sys, s.prn, s.used ? "*" : " ", s.elev, s.az, s.snr);
+    char el[6], az[6], sn[8];
+    if (s.elev < 0) strcpy(el, " -"); else snprintf(el, sizeof(el), "%2d", s.elev);
+    if (s.az < 0) strcpy(az, "  -"); else snprintf(az, sizeof(az), "%3d", s.az);
+    if (s.snr < 0) strcpy(sn, " -"); else snprintf(sn, sizeof(sn), "%2d dB", s.snr);
+    snprintf(b, sizeof(b), "%c%-3u %s\t%s  %s  %s", s.sys, s.prn, s.used ? "*" : " ", el, az, sn);
     L.push_back(b);
   }
   L.push_back("#Link");
@@ -421,6 +440,7 @@ void appGps() {
   s_nSats = 0; s_fixMode = 1; s_pdop = s_hdop = s_vdop = NAN; s_gsvCount = s_gsaCount = s_badLines = 0;
   s_trip = Trip(); s_trip.startMs = millis();
   s_rateIdx = 0;
+  s_antenna = "?";
   int view = 0;
   bool dirty = true;
   uint32_t lastDraw = 0;

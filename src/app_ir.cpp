@@ -36,9 +36,10 @@ static bool toFlipper(const IRData& d, String& proto, uint32_t& addr, uint32_t& 
       if (d.command <= 0xFF) { proto = "NECext"; addr = d.address; cmd = d.command | ((uint32_t)(~d.command & 0xFF) << 8); return true; }
       return false;
     case SAMSUNG:
-      if ((d.address >> 8) == (d.address & 0xFF) && d.command <= 0xFF) {
-        proto = "Samsung32"; addr = d.address & 0xFF; cmd = d.command; return true;
-      }
+      // IRremote folds a repeated address byte (0x2C2C) into 8 bits (0x2C) when it decodes
+      if (d.command > 0xFF) return false;
+      if (d.address <= 0xFF) { proto = "Samsung32"; addr = d.address; cmd = d.command; return true; }
+      if ((d.address >> 8) == (d.address & 0xFF)) { proto = "Samsung32"; addr = d.address & 0xFF; cmd = d.command; return true; }
       return false;
     case SONY:
       proto = d.numberOfBits == 20 ? "SIRC20" : d.numberOfBits == 15 ? "SIRC15" : "SIRC";
