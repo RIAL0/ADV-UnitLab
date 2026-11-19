@@ -142,43 +142,24 @@ static int lineActivity(uint32_t ms) {
   return edges;
 }
 
-bool i2cSafe() { return lineActivity(400) <= 20 && linesIdleHigh(); }
+bool i2cSafe() { return lineActivity(400) <= 20 && irRxPin() < 0 && linesIdleHigh(); }
 
+// Scan order matters, because each probe drives the wires in a way some units dislike:
+//  1. listen passively for UART traffic (GPS talks at least once a second)
+//  2. if quiet, look for an IR receiver with weak pull-downs (one wire high, the other low)
+//  3. only then, with both wires idle high, try I2C
+// I2C is never started on the IR unit: its LED input loads the SDA wire, and the ESP32 I2C
+// driver could wait forever on that bus (the v0.1 freeze). UART is only opened on a wire that is
+// already carrying data, so the IR LED is never driven by a UART idle level.
 Found scan(bool includeUart, const std::function<bool(const char*)>& step) {
   Found f;
   auto go = [&](const char* t) { if (!step(t)) { f.aborted = true; release(); return false; } return true; };
+
   if (!go("Listening for UART traffic")) return f;
-  bool busy = lineActivity(600) > 20;
-  if (!busy && !go("Listening for UART traffic")) return f;
-  if (!busy) busy = lineActivity(600) > 20;
-  if (!go("Checking line levels")) return f;
-  // Never run I2C on a line something else is driving: that is where the old scan hung
-  if (!busy && linesIdleHigh()) {
-    if (!go("I2C scan 0x08-0x77")) return f;
-    if (i2cBegin(100000)) {
-      Wire.setTimeOut(10);
-      for (uint8_t a = 8; a < 120; a++) {
-        if ((a & 15) == 0 && !go("I2C scan 0x08-0x77")) return f;
-        if (!i2cPresent(a)) continue;
-        if (f.i2cCount < 16) f.i2cAddrs[f.i2cCount] = a;
-        f.i2cCount++;
-        bool ok = false;
-        if (a == 0x77 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.envPro = true;
-        if (a == 0x76 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.bme680 = true;
-        if (a == 0x28) f.rfid2 = true;
-        if (a == 0x50) f.nfc = true;
-        if (a == 0x5F) f.cardkb = true;
-      }
-    }
-    release();
-    // 20+ answers means the "bus" is really a UART or IR line being misread: discard
-    if (f.i2cCount > 20) f.i2cCount = 0;
-  } else {
-    f.i2cSkipped = !busy;
-  }
-  if (f.i2cCount == 0) {
-    // Nothing on I2C: the port may hold a UART or IR unit instead. A UART transmit line also
-    // idles high, so look for NMEA first and only then for the IR receiver's idle-high output.
+  bool busy = lineActivity(700) > 20;
+  if (!busy) { if (!go("Listening for UART traffic")) return f; busy = lineActivity(700) > 20; }
+
+  if (busy) {
     if (includeUart) {
       static const uint32_t BAUDS[] = {115200, 9600, 38400};
       static const int ORDER[][2] = {{GROVE_YEL, GROVE_WHT}, {GROVE_WHT, GROVE_YEL}};
@@ -192,14 +173,37 @@ Found scan(bool includeUart, const std::function<bool(const char*)>& step) {
         }
         if (f.gps) break;
       }
-      release();
     }
-    if (!f.gps) {
-      if (!go("IR receiver")) return f;
-      f.irRx = irRxPin();
+    f.uartBusy = !f.gps;
+    release();
+    return f;
+  }
+
+  if (!go("Looking for an IR receiver")) return f;
+  f.irRx = irRxPin();
+  if (f.irRx >= 0) return f;
+
+  if (!go("Checking line levels")) return f;
+  if (!linesIdleHigh()) { f.i2cSkipped = true; return f; }
+
+  if (!go("I2C scan 0x08-0x77")) return f;
+  if (i2cBegin(100000)) {
+    Wire.setTimeOut(10);
+    for (uint8_t a = 8; a < 120; a++) {
+      if ((a & 15) == 0 && !go("I2C scan 0x08-0x77")) return f;
+      if (!i2cPresent(a)) continue;
+      if (f.i2cCount < 16) f.i2cAddrs[f.i2cCount] = a;
+      f.i2cCount++;
+      bool ok = false;
+      if (a == 0x77 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.envPro = true;
+      if (a == 0x76 && i2cRead8(a, 0xD0, &ok) == 0x61 && ok) f.bme680 = true;
+      if (a == 0x28) f.rfid2 = true;
+      if (a == 0x50) f.nfc = true;
+      if (a == 0x5F) f.cardkb = true;
     }
   }
   release();
+  if (f.i2cCount > 20) f.i2cCount = 0;   // every address "answering" = not a real I2C bus
   return f;
 }
 

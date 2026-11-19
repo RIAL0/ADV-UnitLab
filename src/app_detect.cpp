@@ -49,17 +49,19 @@ void appDetect() {
       l.push_back("GPS / NMEA\tfound");
       l.push_back(String("UART\t") + b);
       l.push_back("Open\tGPS section");
-    } else if (f.irRx >= 0 || f.i2cSkipped) {
-      if (f.irRx < 0) { l.push_back("Line held low\tI2C skipped (IR unit LED input?)"); }
-      else {
-      snprintf(b, sizeof(b), "receiver on G%d, LED on G%d", f.irRx, f.irRx == GROVE_YEL ? GROVE_WHT : GROVE_YEL);
-      l.push_back("IR unit?\tidle-high line found");
+    } else if (f.irRx >= 0) {
+      snprintf(b, sizeof(b), "receiver G%d, LED G%d", f.irRx, f.irRx == GROVE_YEL ? GROVE_WHT : GROVE_YEL);
+      l.push_back("IR unit\tidle receiver found");
       l.push_back(String("Wiring\t") + b);
-      l.push_back("Note\ta silent UART unit (Gateway H2) looks the same");
-      }
+      l.push_back("Open\tInfrared section");
+    } else if (f.uartBusy) {
+      l.push_back("UART data\tbut not NMEA");
+      l.push_back("Likely\tGateway H2 or another UART unit");
+    } else if (f.i2cSkipped) {
+      l.push_back("Wire held low\tI2C not attempted");
+      l.push_back("Check\tcable and unit; reseat both ends");
     } else {
-      l.push_back("Nothing\tanswered on I2C, UART or IR");
-      if (f.i2cSkipped) l.push_back("Lines\ta wire is held low: I2C skipped");
+      l.push_back("Nothing\tanswered on UART, IR or I2C");
       l.push_back("Check\tcable fully seated in both ends");
     }
     l.push_back("#Tips");

@@ -36,6 +36,7 @@ struct Found {
   uint32_t gpsBaud = 0;
   int irRx = -1;
   bool i2cSkipped = false;  // a line was held low, so I2C was not attempted
+  bool uartBusy = false;    // data on the wires but not NMEA (e.g. Gateway H2, other UART unit)
   bool aborted = false;
   int i2cCount = 0;
   uint8_t i2cAddrs[16];
@@ -48,7 +49,7 @@ Found scan(bool includeUart, const std::function<bool(const char*)>& step);
 // Both lines read high with the internal pull-ups on: required before talking I2C. A UART or IR
 // unit, or a shorted cable, can hold a line low, and I2C on a stuck bus is where scans hang.
 bool linesIdleHigh();
-// No UART traffic and both lines idle high: safe to start I2C (takes about 0.4 s).
+// No UART traffic, no IR receiver, both lines idle high: safe to start I2C (about 0.5 s).
 bool i2cSafe();
 
 bool nmeaChecksumOk(const char* line);  // "$GPGGA,...*hh" without CR/LF
