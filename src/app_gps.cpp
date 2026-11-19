@@ -233,7 +233,17 @@ static void viewDash() {
   cv.setTextColor(C_FG, C_BG); cv.setCursor(140, y + 10);
   cv.printf("sats %d/%d", usedCount(), s_nSats);
   cv.setCursor(140, y + 20);
-  if (gps.course.isValid()) cv.printf("%3.0f %s", gps.course.deg(), TinyGPSPlus::cardinal(gps.course.deg()));
+  {
+    // Course is only meaningful while moving; standing still, receivers repeat the last value.
+    // Built with integer formatting into a local buffer (the float printf here showed garbage).
+    char cb[24] = "course -";
+    if (gps.course.isValid() && gps.speed.isValid() && gps.speed.kmph() >= 2.0) {
+      int deg = ((int)lround(gps.course.deg())) % 360;
+      if (deg < 0) deg += 360;
+      snprintf(cb, sizeof(cb), "%03d deg %s", deg, TinyGPSPlus::cardinal(deg));
+    }
+    cv.print(cb);
+  }
   y += 30;
   cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y); cv.print("Lat");
   cv.setTextColor(C_FG, C_BG); cv.setCursor(30, y);
@@ -376,7 +386,12 @@ static void buildData(std::vector<String>& L) {
     snprintf(b, sizeof(b), "%.2f km/h", gps.speed.kmph()); kv("Speed", b);
     snprintf(b, sizeof(b), "%.2f kn  %.2f m/s", gps.speed.knots(), gps.speed.mps()); kv(" ", b);
   }
-  if (gps.course.isValid()) { snprintf(b, sizeof(b), "%.1f deg %s", gps.course.deg(), TinyGPSPlus::cardinal(gps.course.deg())); kv("Course", b); }
+  if (gps.course.isValid()) {
+    int deg = ((int)lround(gps.course.deg())) % 360;
+    snprintf(b, sizeof(b), "%03d deg %s%s", deg < 0 ? deg + 360 : deg, TinyGPSPlus::cardinal(deg),
+             gps.speed.kmph() < 2.0 ? " (stale: not moving)" : "");
+    kv("Course", b);
+  }
   L.push_back("#Quality");
   auto f2 = [](float v) { return isnan(v) ? String("-") : String(v, 2); };
   kv("PDOP", f2(s_pdop)); kv("HDOP", f2(s_hdop)); kv("VDOP", f2(s_vdop));

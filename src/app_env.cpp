@@ -439,7 +439,8 @@ static void viewLive() {
   } else {
     float drop = gasDropPct();
     cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y);
-    if (isnan(drop)) cv.printf("Gas baseline: warming up (%lus)", (unsigned long)max(0L, 300L - (long)((millis() - s_openedAt) / 1000)));
+    if (!strcmp(gasText(), "off")) cv.print("Gas heater off (H to turn on)");
+    else if (isnan(drop)) cv.printf("Gas baseline: warming up (%lus)", (unsigned long)max(0L, 300L - (long)((millis() - s_openedAt) / 1000)));
     else { cv.print("Gas vs clean air"); cv.setTextColor(drop > 30 ? C_WARN : C_OK, C_BG); cv.printf(" -%.0f%%", drop); }
     y += 10;
     cv.setTextColor(C_DIM, C_BG); cv.setCursor(4, y); cv.print("IAQ/eCO2/bVOC need the BSEC2 build");
@@ -510,8 +511,11 @@ static void viewGraph() {
     if (px >= 0) cv.drawLine(px, py, x, y, C_OK); else cv.drawPixel(x, y, C_OK);
     px = x; py = y;
   }
-  cv.setTextColor(C_FG, C_BG); cv.setCursor(gx, gy + gh + 3);
-  cv.printf("now %.2f  min %.2f  max %.2f", last, dataMn, dataMx);
+  cv.setTextColor(C_FG, C_BG);
+  // 32 characters max so pressure (1010.27) still fits on one line
+  int sd = fabsf(dataMx) >= 1000 ? 1 : 2;
+  cv.setCursor(4, gy + gh + 3);
+  cv.printf("now %.*f min %.*f max %.*f", sd, last, sd, dataMn, sd, dataMx);
 }
 
 static int s_dataTop = 0;
@@ -681,7 +685,7 @@ void appEnv() {
     if (k.lc == 'l') logToggle();
     if (k.lc == 'm' && !s_alarmText.isEmpty()) s_muted = true;
 #ifndef UL_BSEC2
-    if (k.lc == 'h') { gasCycle(); s_gasBase = NAN; ui::toast(String("Gas every ") + gasText(), C_OK, 700); }
+    if (k.lc == 'h') { gasCycle(); s_gasBase = NAN; s_openedAt = millis(); ui::toast(String("Gas every ") + gasText(), C_OK, 700); }
 #endif
     if (view == 1) {
       if (k.up) s_graphCh = (s_graphCh + CH_N - 1) % CH_N;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- **GPS**: course shows `-` below 2 km/h (receivers repeat a stale course when standing still) and is formatted as whole degrees with a compass point; the Data list marks a stale course.
+- **ENV-Pro**: graph min/max line fits for pressure (1 decimal above 1000); "Gas heater off" shown instead of a baseline countdown when the heater is off; the 5-minute baseline warm-up restarts when `H` changes the heater schedule.
+
 ## 0.1.1
 
 Fixes from the first hardware test.
