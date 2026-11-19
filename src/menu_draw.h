@@ -197,18 +197,19 @@ void drawMenuBody(G& g, int sel, int top) {
     uint16_t ink = on ? 0x0000 : it.color;
     g.fillRoundRect(5, y + 2, 34, 31, 5, tile);
     drawMenuIcon(g, it.icon, 8, y + 3, ink, tile);
-    // title (double size) and description
+    // title (double size) and description, vertically centred against the 31px icon tile:
+    // 16px title + 2px gap + 7px desc = 25px block, centred in the 35px row -> starts at y+5
     g.setTextSize(2);
     g.setTextColor(on ? 0xFFFF : 0xCE79);
-    g.setCursor(45, y + 3);
+    g.setCursor(45, y + 5);
     g.print(it.name);
     g.setTextSize(1);
     g.setTextColor(on ? it.color : 0x8410);
-    g.setCursor(46, y + 23);
+    g.setCursor(46, y + 24);
     g.print(it.desc);
-    // index number, right aligned
+    // index number, aligned with the title
     g.setTextColor(on ? 0xFFFF : 0x528A);
-    g.setCursor(W - 9 - 15, y + 5);
+    g.setCursor(W - 9 - 15, y + 7);
     g.printf("%2d", top + r + 1);
   }
   // scrollbar
