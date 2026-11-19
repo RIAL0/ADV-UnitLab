@@ -1,0 +1,108 @@
+name: Build firmware
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Publish a release with this tag, e.g. v0.1 (leave empty to only build)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      # Public image: raw BME68x driver, no Bosch binaries. This is the one that gets released.
+      - name: Build public image
+        run: |
+          set -o pipefail
+          pio run -e cardputer-adv 2>&1 | tee build-public.log
+
+      # Private image with Bosch BSEC2. Compile check only: the binary is never uploaded, because
+      # the BSEC licence restricts redistributing it. Build it yourself with: pio run -e cardputer-adv-bsec
+      - name: Compile-check BSEC2 image
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          pio run -e cardputer-adv-bsec 2>&1 | tee build-bsec.log
+
+      # Turns compiler errors and warnings from our own sources into annotations on the run page.
+      - name: Annotate compiler messages
+        if: always()
+        run: |
+          for f in build-public.log build-bsec.log; do
+            [ -f "$f" ] || continue
+            grep -E '^(src|include)/[^:]+:[0-9]+:[0-9]+: (error|warning):' "$f" | sort -u | head -40 | \
+            while IFS= read -r line; do
+              file=$(echo "$line" | cut -d: -f1); ln=$(echo "$line" | cut -d: -f2)
+              kind=$(echo "$line" | cut -d: -f4 | tr -d ' '); msg=$(echo "$line" | cut -d: -f5- | cut -c1-300)
+              echo "::${kind} file=${file},line=${ln},title=${f%.log}::${msg}"
+            done
+            # Linker and library errors have no source location
+            grep -E '(undefined reference|cannot find|Error:|fatal error:|Library Manager|UnknownPackageError)' "$f" | sort -u | head -15 | \
+            while IFS= read -r line; do echo "::error title=${f%.log}::$(echo "$line" | cut -c1-300)"; done
+            grep -E '^(RAM|Flash):' "$f" | while IFS= read -r line; do echo "::notice title=${f%.log} size::${line}"; done
+          done
+
+      - name: Name the image
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then VERSION="${GITHUB_REF_NAME}"; fi
+          case "$VERSION" in v*) ;; *) VERSION="build-${GITHUB_SHA::7}" ;; esac
+          cp .pio/build/cardputer-adv/firmware.bin "ADV-UnitLab-CardputerADV-${VERSION}.bin"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ADV-UnitLab-firmware
+          path: ADV-UnitLab-CardputerADV-*.bin
+
+      - name: Write release notes
+        run: |
+          NUM="${VERSION#v}"
+          awk -v ver="$NUM" '
+            /^## / { if (found) exit; if ($2 == ver) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > section.md
+          {
+            echo "## What's new in ${VERSION}"
+            if [ -s section.md ]; then cat section.md; else echo; echo "See the changelog."; echo; fi
+            echo "## Install"
+            echo
+            echo "1. Download \`ADV-UnitLab-CardputerADV-${VERSION}.bin\` below and copy it to the microSD card."
+            echo "2. In [M5Launcher](https://github.com/bmorcelli/Launcher), open **SD**, select the file and choose **Install**."
+            echo
+            echo "This is the public image (raw BME68x driver). For IAQ / eCO2 / bVOC, build \`cardputer-adv-bsec\` yourself; see the README."
+          } > release_notes.md
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: ADV-UnitLab ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          files: ADV-UnitLab-CardputerADV-*.bin
+          body_path: release_notes.md
