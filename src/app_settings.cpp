@@ -83,10 +83,11 @@ void appSettings() {
         l.push_back("ENV build\tBME68x raw (public image)");
 #endif
         l.push_back("Source\tgithub.com/RIAL0/ADV-UnitLab");
-        l.push_back("#Phase 1 sections");
+        l.push_back("#Sections");
         l.push_back("ENV-Pro U169, GPS U032 v1.1, IR U002");
+        l.push_back("NFC U216 / Cap U219 / RFID2 U031-B");
         l.push_back("#Coming next");
-        l.push_back("Phase 2: RFID2 U031-B, NFC U216 + Cap U219 NFC");
+        l.push_back("Phase 2.5: MIFARE Classic dump, magic-card write");
         l.push_back("Phase 3: Cap CC1101 U219 Sub-GHz, Hydra-RF nRF24");
         l.push_back("Phase 4: Gateway H2 U195 Zigbee/Thread/Matter");
         l.push_back("#Files");

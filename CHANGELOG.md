@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2
+
+Phase 2: NFC / RFID (13.56 MHz).
+
+- **New NFC / RFID section** for three devices through one screen: **U216 Unit NFC** (Grove I2C 0x50), **U219 Cap NFC** (the Cap's ST25R3916 over SPI, CS G6 / IRQ G4), and **U031-B RFID2** (Grove I2C 0x28). Pick the device once per boot; switching needs a restart (one Grove port, and the Cap is on SPI).
+- **Read** NFC-A tags: UID, type, ATQA, SAK. NTAG and Ultralight are fully dumped page by page.
+- **Save** to Flipper Zero `.nfc` files in `/UnitLab/nfc/` — NTAG/Ultralight with all pages, anything else UID-level (ISO14443-3A). Files move straight to a Flipper.
+- **Emulate** NTAG and Ultralight from the tag just read or from a saved `.nfc`, on the two ST25R3916 devices (U216, Cap). The RFID2's chip cannot emulate.
+- **Deferred to Phase 2.5:** MIFARE Classic full dump (needs per-sector keys) and writing clones to magic cards (needs Gen1a/CUID backdoor commands). 125 kHz cards (e.g. Indala, HID Prox) are **not** supported by any of this hardware — that is the Flipper's low-frequency antenna, not these 13.56 MHz units.
+
 ## 0.1.2
 
 - **GPS**: course shows `-` below 2 km/h (receivers repeat a stale course when standing still) and is formatted as whole degrees with a compass point; the Data list marks a stale course.

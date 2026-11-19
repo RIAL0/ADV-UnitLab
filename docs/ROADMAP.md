@@ -6,7 +6,17 @@ Each phase is released and tested on hardware before the next starts.
 
 Done. See CHANGELOG.
 
-## Phase 2: 13.56 MHz (RFID2, NFC U216, Cap CC1101 U219 NFC)
+## Phase 2: 13.56 MHz read + emulate (v0.2) — DONE
+
+Read NFC-A on U216 / U219 Cap / RFID2; NTAG/Ultralight full dump to Flipper `.nfc`; UID-level save for other tags; NTAG/Ultralight emulation on the two ST25R3916 devices. Toolchain confirmed on `espressif32@6.12.0` — no move to Arduino-ESP32 3.x was needed.
+
+## Phase 2.5: MIFARE Classic + magic cards
+
+- **MIFARE Classic full dump**: per-sector key auth (default keys + a `/UnitLab/nfc/keys.txt` dictionary), save all blocks to `.nfc`.
+- **Magic cards (Gen1a / CUID)**: write a saved dump to a UID-changeable card via the ST25R3916 raw transceive (backdoor commands). No library support, so this is built and tested against real magic cards.
+- **125 kHz is out of scope** for all UnitLab hardware (13.56 MHz only). Indala / HID Prox / EM4100 stay on the Flipper's LF antenna.
+
+## Phase 2 reference (original plan)
 
 | Device | Bus | Driver | Read/save | Emulate |
 |---|---|---|---|---|
